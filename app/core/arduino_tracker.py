@@ -37,7 +37,7 @@ class ArduinoTracker:
         self.arduino = None
         self.baud_rate = baud_rate
         self.timeout = timeout
-        self.port_identifiers = port_identifiers or ['arduino', 'uno', 'usbserial']
+        self.port_identifiers = port_identifiers or ['arduino', 'uno', 'usbserial'] # NOTE: no longer used, we're looking at VID to ident arduinos instead of description
         self.is_test_running = False
         self.test_results = None
         self.prev_command = None
@@ -111,10 +111,15 @@ class ArduinoTracker:
             port_description = port_info.description.lower()
             
             # Debug output
-            print(f"Port: {port_device}, Description: {port_description}")
+            print(f"Port: {port_device}, Description: {port_description}, HWID: {port_info.hwid}, Product: {port_info.product}, manu: {port_info.manufacturer}, vid: {port_info.vid}")
             
             # Check if any identifier matches the port description
-            if any(identifier in port_description for identifier in self.port_identifiers):
+            # if any(identifier in port_description for identifier in self.port_identifiers):
+            #     arduino_ports.append({
+            #         'port': port_device,
+            #         'description': port_info.description
+            #     })
+            if port_info.vid==6790:
                 arduino_ports.append({
                     'port': port_device,
                     'description': port_info.description

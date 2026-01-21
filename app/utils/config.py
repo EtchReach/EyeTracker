@@ -26,7 +26,7 @@ DEFAULT_CONFIG = {
         "enabled": False,
         "port": "/dev/cu.usbserial-120",  # Default port, only for platform dev, will be removed
         "baud_rate": 115200,
-        "port_identifiers": ['arduino', 'usb', 'serial', 'uno', 'r4', 'wifi']
+        "port_identifiers": ['arduino', 'usb', 'serial', 'uno', 'r4', 'wifi']  # NOTE: no longer used, we're looking at VID to ident arduinos instead of description
     },
     
     # Test settings
