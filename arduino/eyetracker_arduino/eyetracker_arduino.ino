@@ -4,8 +4,8 @@
 // Pin definitions
 const int buzzer_pin = 3;
 const int button_pin = 5;   // Active high, connect other end into ground
-const int servo1 = 10;       // first servo, grey wire
-const int servo2 = 11;      // second servo, blue wire
+const int servo1 = 11;       // first servo, grey wire
+const int servo2 = 10;      // second servo, blue wire
 const int led_pin = 12;
 const int laser_pin = 13;
 
@@ -118,6 +118,15 @@ int myPoints[][2] = {
     {39, 1},
     {86, 22},
     {63, 0}
+  // {17,0},
+  // //{0, 14},
+  // {17,60},
+  // {55,60},
+  // //{55,14},
+  // {55,0},
+  // {90,0},
+  // //{90,14},
+  // {90,60}
 };
 const int numPoints = sizeof(myPoints) / sizeof(myPoints[0]); 
 char click_tracker[numPoints];
