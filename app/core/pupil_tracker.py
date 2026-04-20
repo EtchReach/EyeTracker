@@ -42,6 +42,7 @@ class EyeTracker():
         self.zoom_center = None 
         self.confidence_margin_for_switching_bin_threshold = 2
         self.power_optimisation = self.HIGH_POWER
+        self.blink_grace_measurements = 1000 # TODO test this grace perioid with more people than just nic
         
         # State tracking
         self.pupil_center_pos = None # Tracks the center of the pupil (center of darkest area)
@@ -50,6 +51,7 @@ class EyeTracker():
         self.distance_between_pupilpos_and_lockpos = 0 # Tracks the distance between the pupil pos in the current frame with the initial calibrated position
         self.is_pupil_pos_within_threshold = True # True if the distance between the pupil pos current frame within the set threshold. i.e. False if too far, user is looking away
         self.prev_command = 'within_thres'
+        self.outside_thres_count = 0
         self.frame_count = 0
 
         self.prev_threshold_index = 0 # Tracks the grayscale threshold used. There are 3 grayscale thresholds used, for differing degree of strictness. 1 - light, 2 - medium, 3 - heavy (strict). The threshold used is dynamically determined to give best fitted pupil.
@@ -315,8 +317,6 @@ class EyeTracker():
         Args:
             frame: Video frame to process
             final_contours: Detected pupil contours
-            distance_between_pupilpos_and_lockpos: Distance of pupil from reference point
-            lockpos_threshold: Maximum allowed distance
             
         Returns:
             processed_frame
@@ -330,43 +330,43 @@ class EyeTracker():
             # Pupil is outside threshold - draw red ellipse
             self.is_pupil_pos_within_threshold = False
             frame = EyeTrackerUtils.fit_and_draw_ellipses(frame, final_contours[0], (255, 0, 0))
-            command = 'outside_thres'
-
             
-            # Send command to Arduino if tracker is available AND if command is different from previous command (for efficiency) 
-            if self.tracker and self.tracker.is_connected() and command != self.prev_command:
-                result = self.tracker.send_command(command)
-
-                # Add ack cmd checker??
-                
-                if result == 1:
-                    print("OUT OF THRESHOLD command sent and acknowledged")
-                    self.prev_command = command
-                elif result == 2:
-                    print("Error: Program ended by Arduino")
-                    return frame  # Signal to main loop to exit
-                else:
-                    print("Failed to send OUT OF THRESHOLD command")
-                    
-            # print("Out of threshold")
+            # Only send outside_thres command if grace period has passed
+            if self.prev_command == 'within_thres':
+                self.outside_thres_count += 1
+                if self.outside_thres_count >= self.blink_grace_measurements:
+                    command = 'outside_thres'
+                    if self.tracker and self.tracker.is_connected():
+                        result = self.tracker.send_command(command)
+                        if result == 1:
+                            print("OUT OF THRESHOLD command sent and acknowledged")
+                            self.prev_command = command
+                        elif result == 2:
+                            print("Error: Program ended by Arduino")
+                            return frame
+                        else:
+                            print("Failed to send OUT OF THRESHOLD command")
         else:
             # Pupil is within threshold - draw green ellipse
             self.is_pupil_pos_within_threshold = True
             frame = EyeTrackerUtils.fit_and_draw_ellipses(frame, final_contours[0], (0, 255, 0))
-            command = 'within_thres'
             
-            # Send command to Arduino if tracker is available
-            if self.tracker and self.tracker.is_connected() and command != self.prev_command:
-                result = self.tracker.send_command(command)
-                
-                if result == 1:
-                    print("WITHIN THRESHOLD command sent and acknowledged")
-                    self.prev_command = command
-                elif result == 2:
-                    print("Program ended by Arduino")
-                    return frame
-                else:
-                    print("Failed to send WITHIN THRESHOLD command")
+            # Reset grace period counter
+            self.outside_thres_count = 0
+            
+            # Send within_thres command if we were previously in outside_thres state
+            if self.prev_command == 'outside_thres':
+                command = 'within_thres'
+                if self.tracker and self.tracker.is_connected():
+                    result = self.tracker.send_command(command)
+                    if result == 1:
+                        print("WITHIN THRESHOLD command sent and acknowledged")
+                        self.prev_command = command
+                    elif result == 2:
+                        print("Error: Program ended by Arduino")
+                        return frame
+                    else:
+                        print("Failed to send WITHIN THRESHOLD command")
             
         return frame
     
