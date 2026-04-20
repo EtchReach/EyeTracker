@@ -220,9 +220,9 @@ class ArduinoTracker:
             
         # Convert command to bytes if it's a string
         if isinstance(command, str):
-            if command == 'H':
+            if command == 'outside_thres':
                 command = self.CMD_OUT_OF_THRESHOLD
-            elif command == 'L':
+            elif command == 'within_thres':
                 command = self.CMD_WITHIN_THRESHOLD
             else:
                 print(f"Unknown command sent: {command}")
@@ -530,8 +530,8 @@ if __name__ == "__main__":
     print("\nCommand Menu:")
     print("S - Start test")
     print("E - End test")
-    print("H - Send HIGH signal (LED ON)")
-    print("L - Send LOW signal (LED OFF)")
+    print("outside_thres - Send HIGH signal (LED ON)")
+    print("within_thres - Send LOW signal (LED OFF)")
     print("R - Read data")
     print("0 - Send within threshold")
     print("1 - Send out of threshold")
@@ -540,16 +540,16 @@ if __name__ == "__main__":
     prev_command = None
     
     while True:
-        command = input("\nEnter command: ").strip().upper()
+        command = input("\nEnter command: ").strip()
         
-        if command == 'Q':
+        if command.upper() == 'Q':
             break
-        elif command == 'S':
+        elif command.upper() == 'S':
             if tracker.start_test():
                 print("Test started successfully")
             else:
                 print("Failed to start test")
-        elif command == 'E':
+        elif command.upper() == 'E':
             if tracker.stop_test():
                 results = tracker.get_test_results()
                 if results:
@@ -558,19 +558,21 @@ if __name__ == "__main__":
                     print("No test results available")
             else:
                 print("Failed to stop test")
-        elif command == 'R':
+        elif command.upper() == 'R':
             lines = tracker.read_available_data()
             if lines:
                 print(f"Received data: {lines}")
             else:
                 print("No data available")
-        elif command in ['H', 'L', '0', '1']:
+        elif command in ['outside_thres', 'within_thres', '0', '1']:
             cmd_map = {
+                'within_thres': tracker.CMD_WITHIN_THRESHOLD,
+                'outside_thres': tracker.CMD_OUT_OF_THRESHOLD,
                 '0': tracker.CMD_WITHIN_THRESHOLD,
                 '1': tracker.CMD_OUT_OF_THRESHOLD
             }
             
-            result = tracker.send_command(cmd_map[command])
+            result = tracker.send_command(command)
             
             if result == 1:
                 print(f"Command {command} sent and acknowledged")

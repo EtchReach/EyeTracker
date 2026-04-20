@@ -49,7 +49,7 @@ class EyeTracker():
         self.locked_position = -1 # Tracks the locked position coordinates, the calibrated position.
         self.distance_between_pupilpos_and_lockpos = 0 # Tracks the distance between the pupil pos in the current frame with the initial calibrated position
         self.is_pupil_pos_within_threshold = True # True if the distance between the pupil pos current frame within the set threshold. i.e. False if too far, user is looking away
-        self.prev_command = 'L'
+        self.prev_command = 'within_thres'
         self.frame_count = 0
 
         self.prev_threshold_index = 0 # Tracks the grayscale threshold used. There are 3 grayscale thresholds used, for differing degree of strictness. 1 - light, 2 - medium, 3 - heavy (strict). The threshold used is dynamically determined to give best fitted pupil.
@@ -330,7 +330,7 @@ class EyeTracker():
             # Pupil is outside threshold - draw red ellipse
             self.is_pupil_pos_within_threshold = False
             frame = EyeTrackerUtils.fit_and_draw_ellipses(frame, final_contours[0], (255, 0, 0))
-            command = 'H'
+            command = 'outside_thres'
 
             
             # Send command to Arduino if tracker is available AND if command is different from previous command (for efficiency) 
@@ -353,7 +353,7 @@ class EyeTracker():
             # Pupil is within threshold - draw green ellipse
             self.is_pupil_pos_within_threshold = True
             frame = EyeTrackerUtils.fit_and_draw_ellipses(frame, final_contours[0], (0, 255, 0))
-            command = 'L'
+            command = 'within_thres'
             
             # Send command to Arduino if tracker is available
             if self.tracker and self.tracker.is_connected() and command != self.prev_command:
