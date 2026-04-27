@@ -1,13 +1,17 @@
 #include <Servo.h>
 #include <ArduinoJson.h>
+#include <Adafruit_NeoPixel.h>
 
 // Pin definitions
-const int buzzer_pin = 3;
+
+const int led_pin = 4;
 const int button_pin = 5;   // Active high, connect other end into ground
-const int servo1 = 11;       // first servo, grey wire
-const int servo2 = 10;      // second servo, blue wire
-const int led_pin = 12;
-const int laser_pin = 13;
+
+
+const byte ledPin0 =  10;  // led data pubs
+const byte ledPin1 =  11;    
+const byte ledPin2 =  12;
+const byte ledPin3 =  13;
 
 // Command byte constants (single-byte for efficiency)
 const byte CMD_START_TEST = 0x01;      // Start test
@@ -17,49 +21,31 @@ const byte CMD_WITHIN_THRESHOLD = 0x04;  // Within threshold signal
 const byte CMD_OUT_OF_THRESHOLD = 0x05;  // Out of threshold signal
 const byte CMD_TEST_RESULTS = 0x06;  // Get test results
 
-// const char CMD_START_TEST = '1';      // Start test
-// const char CMD_END_TEST = '2';        // End test
-// const char CMD_PING = '3';            // Ping signal
-// const char CMD_WITHIN_THRESHOLD = '4';  // Within threshold signal
-// const char CMD_OUT_OF_THRESHOLD = '5';  // Out of threshold signal
-// const char CMD_TEST_RESULTS = '6';  // Check test status: Ready, Running, Ended
-
 // Response byte constants
 const char RESP_ACK = 'O';             // Command acknowledged
 
 // Timing constants
 const int point_duration = 5000; // wait time before shifting to next point
-const int laser_duration = 2000; // duration for laser to be turned on
+//const int laser_duration = 2000; // duration for laser to be turned on
 const int PRE_FIRE_DELAY = 500;    // 0.5 second delay before firing
-const int buzzer_duration = 1000; // Buzzer duration in milliseconds
+//const int buzzer_duration = 1000; // Buzzer duration in milliseconds
 const unsigned long DEBOUNCE_DELAY = 50; 
-const int PROGRESS_INTERVAL = 300; // Send progress report every 100ms
-
-// Servo movement parameters
-const float SERVO_STEPS = 1;           
-// const float TOTAL_MOVE_TIME = 2000;    
+const int PROGRESS_INTERVAL = 300; // Send progress report every 100ms 
 
 // State tracking variables
 int button_state = HIGH; // Active LOW, take note
 int last_button_state = HIGH;
-int laser_state = LOW;
-int laser_flag = LOW;
 int buzzer_state = LOW;
+// int laser_state = LOW;
+// int laser_flag = LOW;
 int led_state = LOW;
+int LED_strip_state = LOW;
 int point_tracker = -1;
 
 // Timing variables
 unsigned long timestamp = 0;
-unsigned long buzzer_start_time = 0;
-unsigned long laser_start_time = 0;
 unsigned long last_debounce_time = 0;
 unsigned long last_progress_send_time = 0;
-
-// Servo position tracking
-float current_servo1_pos = 90;
-float current_servo2_pos = 90;
-bool is_moving = false;
-unsigned long last_move_time = 0;
 
 // Test state variables
 bool test_running = false;
@@ -68,67 +54,22 @@ unsigned long test_start_time = 0;
 const unsigned long TEST_TIMEOUT = 300000; // 5 minutes timeout
 int out_of_thres_counter = 0;
 
-// Servo objects
-Servo myservo1;
-Servo myservo2;
+// Init LED strips
+#define R  255 // RGB configurations
+#define G  255
+#define B  31
 
-// Laser point coordinates (4 points): (Y-axis: 0 (top) - 180 (bottom), X-axis: 0 (right) - 180 (left)) 
-// int myPoints[4][2] = {{75, 110}, {70, 60}, {20, 60}, {30, 110}}; 
-int myPoints[][2] = {
-    {74, 8},
-    {29, 52},
-    {61, 10},
-    {43, 5},
-    {83, 41},
-    {20, 11},
-    {52, 33},
-    {67, 19},
-    {88, 3},
-    {35, 44},
+const uint16_t nbPixels = 256 ; // number of led pixels per strip (32x8)
 
-    {57, 27},
-    {24, 58},
-    {31, 14},
-    {90, 14},
-    {55, 6},
-    {22, 18},
-    {79, 55},
-    {46, 9},
-    {62, 46},
-    {50, 25},
+Adafruit_NeoPixel strip0 = Adafruit_NeoPixel(nbPixels, ledPin0, NEO_GRB + NEO_KHZ800);
+Adafruit_NeoPixel strip1 = Adafruit_NeoPixel(nbPixels, ledPin1, NEO_GRB + NEO_KHZ800);
+Adafruit_NeoPixel strip2 = Adafruit_NeoPixel(nbPixels, ledPin2, NEO_GRB + NEO_KHZ800);
+Adafruit_NeoPixel strip3 = Adafruit_NeoPixel(nbPixels, ledPin3, NEO_GRB + NEO_KHZ800);
 
-    {41, 60},
-    {82, 1},
-    {28, 7},
-    {58, 33},
-    {54, 2},
-    {69, 14},
-    {18, 49},
-    {76, 4},
-    {17, 0},
-    {55, 50},
+const uint32_t tempo = 100; // duration led is turned on
 
-    {33, 28},
-    {90, 18},
-    {23, 4},
-    {64, 50},
-    {55, 13},
-    {71, 60},
-    {57, 12},
-    {39, 1},
-    {86, 22},
-    {63, 0}
-  // {17,0},
-  // //{0, 14},
-  // {17,60},
-  // {55,60},
-  // //{55,14},
-  // {55,0},
-  // {90,0},
-  // //{90,14},
-  // {90,60}
-};
-const int numPoints = sizeof(myPoints) / sizeof(myPoints[0]); 
+// Point tracker
+const int numPoints = 40;
 char click_tracker[numPoints];
 int click_counter = 0;
 
@@ -138,14 +79,14 @@ void setup() {
 
   // Configure pins
   pinMode(button_pin, INPUT_PULLUP);
-  pinMode(laser_pin, OUTPUT);
-  pinMode(buzzer_pin, OUTPUT);
+  // pinMode(laser_pin, OUTPUT);
   pinMode(led_pin, OUTPUT);
-  digitalWrite(buzzer_pin, buzzer_state);
 
-  // Attach servos
-  myservo1.attach(servo1, 600, 2000);
-  myservo2.attach(servo2, 600, 2000);
+  // Init up LED strips
+  strip0.begin();
+  strip1.begin();
+  strip2.begin();
+  strip3.begin();
 
   // Init click tracker array
   for (int i = 0; i < numPoints; i++) {
@@ -257,6 +198,59 @@ void loop() {
   }
 }
 
+void lightUpLED(){
+  int strip_idx = random(4);
+  int i = random(256);
+
+  if (strip_idx == 0){
+
+    strip0.setPixelColor(i, strip0.Color(R, G, B));
+    strip0.show(); // This sends the updated pixel color to the hardware.
+
+    LED_strip_state = HIGH; 
+    delay(tempo);
+    strip0.clear();
+
+    LED_strip_state = LOW;
+  }
+
+  else if (strip_idx == 1) {
+
+    strip1.setPixelColor(i, strip1.Color(R, G, B));
+    strip1.show(); // This sends the updated pixel color to the hardware.
+
+    LED_strip_state = HIGH; 
+    delay(tempo);
+    strip1.clear();
+
+    LED_strip_state = LOW;
+  }
+
+  else if (strip_idx == 2) {
+
+    strip2.setPixelColor(i, strip2.Color(R, G, B));
+    strip2.show(); // This sends the updated pixel color to the hardware.
+
+    LED_strip_state = HIGH; 
+    delay(tempo);
+    strip2.clear();
+
+    LED_strip_state = LOW;
+  }
+
+  else if (strip_idx == 3) {
+
+    strip3.setPixelColor(i, strip3.Color(R, G, B));
+    strip3.show(); // This sends the updated pixel color to the hardware.
+
+    LED_strip_state = HIGH; 
+    delay(tempo);
+    strip3.clear();
+
+    LED_strip_state = LOW;
+  }
+}
+
 void startTest() {
   Serial.println("Test starting...");
   test_running = true;
@@ -273,31 +267,19 @@ void startTest() {
     click_tracker[i] = '0';
   }
   
-  // Set initial position
-  int target_x = myPoints[point_tracker][0];
-  int target_y = myPoints[point_tracker][1];
-  
-  // Store as current position without movement (first position)
-  current_servo1_pos = target_y;
-  current_servo2_pos = target_x;
-  
-  // Move servos directly to initial position (no need for smooth movement at start)
-  myservo1.write(target_y);
-  myservo2.write(target_x);
-  
   // Remove jittering
   delay(50);
 }
 
 void endTest(String reason) {
   // Turn off all outputs
-  digitalWrite(laser_pin, LOW);
-  digitalWrite(buzzer_pin, LOW);
+
   
-  laser_state = LOW;
-  laser_flag = LOW;
-  buzzer_state = LOW;
-  
+  // laser_state = LOW;
+  // laser_flag = LOW;
+
+  LED_strip_state = LOW;
+
   test_running = false;
   test_finished = true;
   
@@ -315,44 +297,6 @@ void endTest(String reason) {
   Serial.println("System ready");
 }
 
-void smoothServoMove(int target_servo1, int target_servo2) {
-  // Calculate the step sizes for each servo
-  // float step_size1 = (target_servo1 - current_servo1_pos) / (float)SERVO_STEPS;
-  // float step_size2 = (target_servo2 - current_servo2_pos) / (float)SERVO_STEPS;
-
-  // Calculate delay between steps
-  // int step_delay = TOTAL_MOVE_TIME / SERVO_STEPS;
-
-  // // Variables to track intermediate positions
-  // float pos1 = current_servo1_pos;
-  // float pos2 = current_servo2_pos;
-
-  // // Perform the gradual movement
-  // for (int i = 1; i <= SERVO_STEPS; i++) {
-  //   // Calculate intermediate positions
-  //   pos1 = current_servo1_pos + (step_size1 * i);
-  //   pos2 = current_servo2_pos + (step_size2 * i);
-
-  //   // Move servos to the calculated positions
-  //   int rounded_pos1 = round(pos1);
-  //   int rounded_pos2 = round(pos2);
-
-  //   // Write positions to servos
-  //   myservo1.write(rounded_pos1);
-  //   myservo2.write(rounded_pos2);
-
-  //   // Allow time for servo to move
-  //   delay(step_delay);
-  // }
-
-  // Make sure we're at the final position
-  myservo1.write(target_servo1);
-  myservo2.write(target_servo2);
-
-  // Update current positions
-  current_servo1_pos = target_servo1;
-  current_servo2_pos = target_servo2;
-}
 
 void printTestStatus() {
   JsonDocument doc; // Increased size slightly for safety
@@ -405,22 +349,8 @@ void runTestLogic(unsigned long current_time) {
       return;
     }
 
-    // If laser is still on turn it off before moving
-    if (laser_state == HIGH) {
-      digitalWrite(laser_pin, LOW);
-      laser_state = LOW;
-    }
-
-    int target_x = myPoints[point_tracker][0];
-    int target_y = myPoints[point_tracker][1];
-
-    // Move the servos smoothly instead of abruptly
-    smoothServoMove(target_y, target_x);  // Note: servo1=y, servo2=x
-
-    // Set up laser firing
-    laser_flag = HIGH;
-    laser_start_time = current_time;  // Initialize the start time
-    laser_state = LOW;  // Ensure laser starts from OFF state
+    // Select and light up LED
+    lightUpLED();
 
     // Update timestamp
     timestamp = current_time;
@@ -433,19 +363,14 @@ void runTestLogic(unsigned long current_time) {
     
       if (button_state == LOW) {
         // Serial.println("Pressed!");
-        if (laser_state == LOW) {
+        if (LED_strip_state == LOW) {
           // Wrong press, turn on buzzer
           // Serial.println("Wrong press!");
-          digitalWrite(buzzer_pin, HIGH);
+          //digitalWrite(buzzer_pin, HIGH);
           buzzer_state = HIGH;
-          buzzer_start_time = current_time;
+          //buzzer_start_time = current_time;
         } 
         else {
-          // Turn off laser
-          // Serial.println("Right press!");
-          digitalWrite(laser_pin, LOW);
-          laser_state = LOW;
-          laser_flag = LOW;
           
           // Add click to click tracker
           click_tracker[point_tracker] = '1';
@@ -456,28 +381,4 @@ void runTestLogic(unsigned long current_time) {
     }
   }
   
-  // Laser control logic
-  if (laser_flag == HIGH) {
-    if (laser_state == LOW) {
-      if (current_time - laser_start_time >= PRE_FIRE_DELAY) {
-        digitalWrite(laser_pin, HIGH);
-        laser_state = HIGH;
-        laser_start_time = current_time;  // Reset start time for duration tracking
-      }
-    }
-    else if (current_time - laser_start_time >= laser_duration) {
-      // Turn off laser after duration
-      digitalWrite(laser_pin, LOW);
-      laser_state = LOW;
-      laser_flag = LOW;
-    }
-  }
-
-  // Buzzer control logic
-  if (buzzer_state == HIGH) {    
-    if (current_time - buzzer_start_time >= buzzer_duration) {
-      digitalWrite(buzzer_pin, LOW);  // Turn off the buzzer
-      buzzer_state = LOW;
-    }
-  }
 }
