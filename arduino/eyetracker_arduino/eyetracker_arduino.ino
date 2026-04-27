@@ -4,14 +4,14 @@
 
 // Pin definitions
 
-const int led_pin = 4;
-const int button_pin = 5;   // Active high, connect other end into ground
+const int led_pin = 3;
+const int button_pin = 7;   // Active high, connect other end into ground
 
 
 const byte ledPin0 =  10;  // led data pubs
 const byte ledPin1 =  11;    
-const byte ledPin2 =  12;
-const byte ledPin3 =  13;
+// const byte ledPin2 =  12;
+// const byte ledPin3 =  13;
 
 // Command byte constants (single-byte for efficiency)
 const byte CMD_START_TEST = 0x01;      // Start test
@@ -59,12 +59,12 @@ int out_of_thres_counter = 0;
 #define G  255
 #define B  31
 
-const uint16_t nbPixels = 256 ; // number of led pixels per strip (32x8)
+const uint16_t nbPixels = 512 ; // number of led pixels per strip (32x8)
 
 Adafruit_NeoPixel strip0 = Adafruit_NeoPixel(nbPixels, ledPin0, NEO_GRB + NEO_KHZ800);
 Adafruit_NeoPixel strip1 = Adafruit_NeoPixel(nbPixels, ledPin1, NEO_GRB + NEO_KHZ800);
-Adafruit_NeoPixel strip2 = Adafruit_NeoPixel(nbPixels, ledPin2, NEO_GRB + NEO_KHZ800);
-Adafruit_NeoPixel strip3 = Adafruit_NeoPixel(nbPixels, ledPin3, NEO_GRB + NEO_KHZ800);
+// Adafruit_NeoPixel strip2 = Adafruit_NeoPixel(nbPixels, ledPin2, NEO_GRB + NEO_KHZ800);
+// Adafruit_NeoPixel strip3 = Adafruit_NeoPixel(nbPixels, ledPin3, NEO_GRB + NEO_KHZ800);
 
 const uint32_t tempo = 100; // duration led is turned on
 
@@ -85,8 +85,6 @@ void setup() {
   // Init up LED strips
   strip0.begin();
   strip1.begin();
-  strip2.begin();
-  strip3.begin();
 
   // Init click tracker array
   for (int i = 0; i < numPoints; i++) {
@@ -199,8 +197,8 @@ void loop() {
 }
 
 void lightUpLED(){
-  int strip_idx = random(4);
-  int i = random(256);
+  int strip_idx = random(2);
+  int i = random(nbPixels);
 
   if (strip_idx == 0){
 
@@ -226,29 +224,6 @@ void lightUpLED(){
     LED_strip_state = LOW;
   }
 
-  else if (strip_idx == 2) {
-
-    strip2.setPixelColor(i, strip2.Color(R, G, B));
-    strip2.show(); // This sends the updated pixel color to the hardware.
-
-    LED_strip_state = HIGH; 
-    delay(tempo);
-    strip2.clear();
-
-    LED_strip_state = LOW;
-  }
-
-  else if (strip_idx == 3) {
-
-    strip3.setPixelColor(i, strip3.Color(R, G, B));
-    strip3.show(); // This sends the updated pixel color to the hardware.
-
-    LED_strip_state = HIGH; 
-    delay(tempo);
-    strip3.clear();
-
-    LED_strip_state = LOW;
-  }
 }
 
 void startTest() {
