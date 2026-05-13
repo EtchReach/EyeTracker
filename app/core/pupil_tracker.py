@@ -6,6 +6,7 @@ import sys
 import time
 
 from app.core.pupil_tracker_utils import EyeTrackerUtils
+from app.utils.audio import get_shared_audio_player
 
 # FOR PROFILLING uncomment this code and comment out code above, 
 # relative import path changed as profiling script is in the same dir
@@ -30,6 +31,7 @@ class EyeTracker():
     def __init__(self, arduino_tracker=None):
         """Initialize the eye tracker"""
         self.tracker = arduino_tracker
+        self.audio_player = get_shared_audio_player()
         self.cap = None
 
         # Video input path 
@@ -42,7 +44,7 @@ class EyeTracker():
         self.zoom_center = None 
         self.confidence_margin_for_switching_bin_threshold = 2
         self.power_optimisation = self.HIGH_POWER
-        self.blink_grace_measurements = 1000 # TODO test this grace perioid with more people than just nic
+        self.blink_grace_measurements = 10 # TODO test this grace perioid with more people than just nic
         
         # State tracking
         self.pupil_center_pos = None # Tracks the center of the pupil (center of darkest area)
@@ -341,6 +343,7 @@ class EyeTracker():
                         if result == 1:
                             print("OUT OF THRESHOLD command sent and acknowledged")
                             self.prev_command = command
+                            self.audio_player.play("look_straight")
                         elif result == 2:
                             print("Error: Program ended by Arduino")
                             return frame

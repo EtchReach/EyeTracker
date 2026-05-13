@@ -39,6 +39,9 @@ Thumbs.db
 # Local config
 config.local.py
 *.log
+.env
+.env.*
+!.env.example
 
 # Profiled Logs
 *eye_tracker_profile.prof

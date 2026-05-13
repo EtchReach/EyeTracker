@@ -4,6 +4,8 @@ import serial
 import serial.tools.list_ports
 import json
 
+from app.utils.audio import get_shared_audio_player
+
 class ArduinoTracker:
     """Handles connection and communication with Arduino hardware."""
     
@@ -22,6 +24,8 @@ class ArduinoTracker:
     RESP_SYSTEM_ONLINE = "Online"
     RESP_SYSTEM_READY = "Ready"
     RESP_SYSTEM_NOT_READY = "Running"
+    PRESS_EVENT_CORRECT = "PRESS_CORRECT"
+    PRESS_EVENT_WRONG = "PRESS_WRONG"
     
     def __init__(self, auto_connect=True, baud_rate=115200, timeout=2, on_detect_callback=None, port_identifiers=None):
         """Initialize the Arduino tracker.
@@ -41,6 +45,7 @@ class ArduinoTracker:
         self.is_test_running = False
         self.test_results = None
         self.prev_command = None
+        self.audio_player = get_shared_audio_player()
         
         # If auto_connect is enabled, try to connect automatically
         if auto_connect:
@@ -236,7 +241,50 @@ class ArduinoTracker:
         except serial.SerialException as e:
             print(f"Error sending command: {e}")
             return 0
-        
+
+    def _play_press_event(self, line):
+        """Play backend audio for Arduino press events."""
+        if line == self.PRESS_EVENT_CORRECT:
+            self.audio_player.play("correct")
+            return True
+        if line == self.PRESS_EVENT_WRONG:
+            self.audio_player.play("wrong")
+            return True
+        return False
+
+    def _parse_serial_line(self, line):
+        """Classify a serial line and trigger any side effects."""
+        if self._play_press_event(line):
+            return "press_event", line
+
+        if self.RESP_TEST_END in line:
+            return "test_end", None
+
+        if self.RESP_SYSTEM_READY in line:
+            return "ready", {'test_status': 'Ready'}
+
+        if line.startswith("{") and line.endswith("}"):
+            try:
+                return "json", json.loads(line)
+            except json.JSONDecodeError:
+                print(f"JSON decode error: {line}")
+                return "invalid_json", line
+
+        return "text", line
+
+    def _read_available_lines(self):
+        """Drain any currently buffered serial lines."""
+        if not self.is_connected():
+            return []
+
+        lines = []
+        while self.arduino.in_waiting > 0:
+            line = self.arduino.readline().decode('utf-8', errors='ignore').strip()
+            if line:
+                lines.append(line)
+
+        return lines
+    
     
     def check_ack(self):
         """Non-blocking check for Arduino acknowledgment."""
@@ -381,14 +429,11 @@ class ArduinoTracker:
                 if self.arduino.in_waiting > 0:
                     line = self.arduino.readline().decode('utf-8', errors='ignore').strip()
                     print(f"Results line: {line}")
-
-                    if line.startswith("{") and line.endswith("}"):
-                        try:
-                            data = json.loads(line)
-                            return data
-                        except json.JSONDecodeError:
-                            print(f"JSON decode error: {line}")
-                            return None
+                    line_type, payload = self._parse_serial_line(line)
+                    if line_type == "json":
+                        return payload
+                    if line_type == "test_end":
+                        self.is_test_running = False
                             
                 time.sleep(0.1)
 
@@ -410,11 +455,10 @@ class ArduinoTracker:
             
         lines = []
         try:
-            while self.arduino.in_waiting > 0:
-                line = self.arduino.readline().decode('utf-8', errors='ignore').strip()
-                if line.startswith("{") and line.endswith("}"):
-                    json_data = json.loads(line)
-                    lines.append(json_data)
+            for line in self._read_available_lines():
+                line_type, payload = self._parse_serial_line(line)
+                if line_type == "json":
+                    lines.append(payload)
                 else:
                     lines.append(line)
         except serial.SerialException as e:
@@ -440,15 +484,7 @@ class ArduinoTracker:
 
         try:
             # Read all available lines first
-            lines = []
-            while self.arduino.in_waiting > 0:
-                line = self.arduino.readline().decode('utf-8', errors='ignore').strip()
-                if line:  # Only add non-empty lines
-                    lines.append(line)
-            
-            # NOW clear the buffers after reading everything
-            self.arduino.reset_input_buffer()
-            self.arduino.reset_output_buffer()
+            lines = self._read_available_lines()
             
             if not lines:
                 return {'test_status': "No response"}
@@ -460,17 +496,11 @@ class ArduinoTracker:
             latest_status = None
             
             for line in lines:
-                if self.RESP_TEST_END in line:
+                line_type, payload = self._parse_serial_line(line)
+                if line_type == "test_end":
                     test_end_found = True
-                elif self.RESP_SYSTEM_READY in line:
-                    latest_status = {'test_status': 'Ready'}
-                elif line.startswith("{") and line.endswith("}"):
-                    try:
-                        data = json.loads(line)
-                        latest_status = data
-                        # print("data from get test status ", data)
-                    except json.JSONDecodeError:
-                        print(f"JSON decode error: {line}")
+                elif line_type in {"ready", "json"}:
+                    latest_status = payload
             
             # Return TEST_END status if found, otherwise return latest status
             if test_end_found:

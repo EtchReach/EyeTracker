@@ -511,13 +511,19 @@ class MainWindow(QMainWindow):
         try:
             self.is_test_running = True
             self.show_test_view()
-            self.status_bar.showMessage("Test in progress")
+            self.status_bar.showMessage("Starting test")
         except Exception as e:
             QMessageBox.critical(
                 self, 
                 "Error", 
                 f"An error occurred while starting the test: {str(e)}"
             )
+
+    def cancel_test_start(self):
+        """Cancel a queued or failed test start and return to calibration."""
+        self.is_test_running = False
+        self.status_bar.showMessage("Test start cancelled")
+        self.show_calibration_view()
     
     def end_test(self, results):
         """End the test and show results"""

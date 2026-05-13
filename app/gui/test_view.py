@@ -3,15 +3,19 @@ Test view for the EyeTracker application
 """
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel,
-    QPushButton, QProgressBar, QScrollArea, QSlider, QFrame
+    QPushButton, QProgressBar, QScrollArea, QSlider, QFrame, QMessageBox
 )
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
+from PyQt6.QtTextToSpeech import QTextToSpeech
 
 from app.gui.widgets.video_widget import VideoWidget
 from app.gui.widgets.help_popup import HelpPopup
 
 class TestView(QWidget):
     """View for running the visual field test"""
+
+    START_DELAY_MS = 5000
+    START_ANNOUNCEMENT = "Test is starting now"
     
     # Signals
     test_completed = pyqtSignal(dict)
@@ -28,6 +32,15 @@ class TestView(QWidget):
         # Timer for checking test status
         self.status_timer = QTimer()
         self.status_timer.timeout.connect(self.check_test_status)
+
+        self.pre_start_timer = QTimer(self)
+        self.pre_start_timer.setSingleShot(True)
+        self.pre_start_timer.timeout.connect(self._announce_test_start)
+
+        self.speech_engine = None
+        if QTextToSpeech.availableEngines():
+            self.speech_engine = QTextToSpeech(self)
+            self.speech_engine.stateChanged.connect(self._handle_speech_state_changed)
         
         # Test state
         self.test_points_total = 0
@@ -42,6 +55,9 @@ class TestView(QWidget):
         self.num_points = 1
         self.click_counter = 0
         self.click_tracker = None
+        self.start_sequence_active = False
+        self.awaiting_announcement = False
+        self.test_has_started = False
     
     def setup_ui(self):
         """Set up the user interface"""
@@ -342,41 +358,117 @@ class TestView(QWidget):
 
             return
         
+    def _announce_test_start(self):
+        """Play the start announcement before sending the Arduino start command."""
+        if not self.start_sequence_active:
+            return
+
+        self.progress_label.setText("Announcement: Test is starting now")
+        self.last_action_label.setText("Announcement: Test is starting now")
+
+        if self.speech_engine is None:
+            self._launch_arduino_test()
+            return
+
+        self.awaiting_announcement = True
+        self.speech_engine.say(self.START_ANNOUNCEMENT)
+
+    def _handle_speech_state_changed(self, state):
+        """Start the test when speech playback finishes."""
+        if not self.awaiting_announcement:
+            return
+
+        if state == QTextToSpeech.State.Ready:
+            self.awaiting_announcement = False
+            self._launch_arduino_test()
+
+    def _launch_arduino_test(self):
+        """Send the actual start command to the Arduino."""
+        if not self.start_sequence_active:
+            return
+
+        self.start_sequence_active = False
+        self.progress_label.setText("Points: 0 / 0")
+        self.last_action_label.setText("Waiting for first point...")
+
+        if not self.parent.arduino_tracker.start_test():
+            self.video_timer.stop()
+            QMessageBox.critical(
+                self,
+                "Start Test Failed",
+                "The test could not be started on the Arduino."
+            )
+            if self.parent:
+                self.parent.cancel_test_start()
+            return
+
+        self.test_has_started = True
+        self.status_timer.start(500)
+
+    def _cancel_pending_start(self):
+        """Cancel any queued countdown or spoken announcement."""
+        self.pre_start_timer.stop()
+        self.start_sequence_active = False
+        self.awaiting_announcement = False
+        if self.speech_engine is not None:
+            self.speech_engine.stop()
+
     
     def start_test(self):
         """Initialize and start the test"""
+        self._cancel_pending_start()
+
         # Reset test state
         self.points_shown = 0
         self.num_points = 1
         self.click_counter = 0
         self.click_tracker = None
+        self.test_has_started = False
     
         self.test_points_total = 0
         self.test_points_completed = 0
+        self.test_results = {
+            'points_shown': 0,
+            'points_clicked': 0,
+            'points_missed': 0,
+            'false_positives': 0
+        }
         self.progress_bar.setValue(0)
-        self.progress_label.setText("Points: 0 / 0")
+        self.progress_label.setText("Test starts in 5 seconds")
+        self.clicks_label.setText("Clicks Made: 0")
+        self.successful_detections_label.setText("Successful Detections: 0")
+        self.last_action_label.setText("Hold still. The test will begin shortly.")
         
         # Start timers
-        self.video_timer.start(8)  # ~30 fps
-        self.status_timer.start(500)  # Check test status every 500ms
+        self.video_timer.start(8)
+        self.status_timer.stop()
 
-        # Send arduino command to start test
-        self.parent.arduino_tracker.start_test()
+        self.start_sequence_active = True
+        self.pre_start_timer.start(self.START_DELAY_MS)
     
     def stop_test(self):
         """Stop the test before completion"""
+        if self.start_sequence_active and not self.test_has_started:
+            self._cancel_pending_start()
+            self.video_timer.stop()
+            if self.parent:
+                self.parent.cancel_test_start()
+            return
+
         if self.parent and hasattr(self.parent, 'arduino_tracker') and self.parent.arduino_tracker:
             self.parent.arduino_tracker.stop_test()
             self.finish_test()
     
     def finish_test(self):
         """Finish the test and show results"""
+        self._cancel_pending_start()
+
         # Stop timers
         self.video_timer.stop()
         self.status_timer.stop()
         
         # Get final results from Arduino
-        if self.parent and hasattr(self.parent, 'arduino_tracker') and self.parent.arduino_tracker:
+        if self.test_has_started and self.parent and hasattr(self.parent, 'arduino_tracker') and self.parent.arduino_tracker:
             results = self.parent.arduino_tracker.get_test_results()
             if results:
                 self.test_results = results
@@ -395,5 +487,6 @@ class TestView(QWidget):
         super().hideEvent(event)
         
         # Stop timers when the view is hidden
+        self._cancel_pending_start()
         self.video_timer.stop()
         self.status_timer.stop()

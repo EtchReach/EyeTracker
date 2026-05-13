@@ -26,7 +26,8 @@ const char RESP_ACK = 'O';             // Command acknowledged
 
 // Timing constants
 const int point_duration = 5000; // wait time before shifting to next point
-//const int laser_duration = 2000; // duration for laser to be turned on
+const unsigned long START_DELAY_MS = 0;
+const unsigned long RESPONSE_WINDOW_MS = 2000;
 const int PRE_FIRE_DELAY = 500;    // 0.5 second delay before firing
 //const int buzzer_duration = 1000; // Buzzer duration in milliseconds
 const unsigned long DEBOUNCE_DELAY = 50; 
@@ -46,13 +47,19 @@ int point_tracker = -1;
 unsigned long timestamp = 0;
 unsigned long last_debounce_time = 0;
 unsigned long last_progress_send_time = 0;
+unsigned long stimulus_end_time = 0;
+unsigned long response_window_end_time = 0;
+unsigned long next_point_delay = point_duration;
 
 // Test state variables
 bool test_running = false;
 bool test_finished = false;
+bool response_window_active = false;
+bool point_answered = false;
 unsigned long test_start_time = 0;
 const unsigned long TEST_TIMEOUT = 300000; // 5 minutes timeout
 int out_of_thres_counter = 0;
+int active_strip_idx = -1;
 
 // Init LED strips
 #define R  255 // RGB configurations
@@ -196,34 +203,46 @@ void loop() {
   }
 }
 
+void clearActiveLED() {
+  if (active_strip_idx == 0) {
+    strip0.clear();
+    strip0.show();
+  } else if (active_strip_idx == 1) {
+    strip1.clear();
+    strip1.show();
+  }
+
+  active_strip_idx = -1;
+  LED_strip_state = LOW;
+}
+
 void lightUpLED(){
+  clearActiveLED();
+
   int strip_idx = random(2);
   int i = random(nbPixels);
 
   if (strip_idx == 0){
-
     strip0.setPixelColor(i, strip0.Color(R, G, B));
     strip0.show(); // This sends the updated pixel color to the hardware.
-
-    LED_strip_state = HIGH; 
-    delay(tempo);
-    strip0.clear();
-
-    LED_strip_state = LOW;
   }
-
   else if (strip_idx == 1) {
-
     strip1.setPixelColor(i, strip1.Color(R, G, B));
     strip1.show(); // This sends the updated pixel color to the hardware.
-
-    LED_strip_state = HIGH; 
-    delay(tempo);
-    strip1.clear();
-
-    LED_strip_state = LOW;
   }
 
+  active_strip_idx = strip_idx;
+  LED_strip_state = HIGH;
+}
+
+void updateStimulusState(unsigned long current_time) {
+  if (LED_strip_state == HIGH && current_time >= stimulus_end_time) {
+    clearActiveLED();
+  }
+
+  if (response_window_active && current_time >= response_window_end_time) {
+    response_window_active = false;
+  }
 }
 
 void startTest() {
@@ -232,11 +251,17 @@ void startTest() {
   test_finished = false;
   test_start_time = millis();
   timestamp = millis();
+  next_point_delay = START_DELAY_MS;
   
   // Reset all counters and states
   point_tracker = -1;
   click_counter = 0;
   out_of_thres_counter = 0;
+  response_window_active = false;
+  point_answered = false;
+  stimulus_end_time = 0;
+  response_window_end_time = 0;
+  clearActiveLED();
   
   for (int i = 0; i < numPoints; i++) {
     click_tracker[i] = '0';
@@ -253,7 +278,9 @@ void endTest(String reason) {
   // laser_state = LOW;
   // laser_flag = LOW;
 
-  LED_strip_state = LOW;
+  response_window_active = false;
+  point_answered = false;
+  clearActiveLED();
 
   test_running = false;
   test_finished = true;
@@ -309,12 +336,14 @@ void runTestLogic(unsigned long current_time) {
   // Inverse logic, if 1 means button not pressed, 0 means button pressed
   int reading = digitalRead(button_pin);
 
+  updateStimulusState(current_time);
+
   if (reading != last_button_state) {
     last_debounce_time = current_time;
     last_button_state = reading;
   }
 
-  if (duration > point_duration) {
+  if (duration > next_point_delay) {
     // Update point_tracker to the next point
     point_tracker++;
 
@@ -326,6 +355,11 @@ void runTestLogic(unsigned long current_time) {
 
     // Select and light up LED
     lightUpLED();
+    stimulus_end_time = current_time + tempo;
+    response_window_active = true;
+    response_window_end_time = current_time + RESPONSE_WINDOW_MS;
+    point_answered = false;
+    next_point_delay = point_duration;
 
     // Update timestamp
     timestamp = current_time;
@@ -337,21 +371,17 @@ void runTestLogic(unsigned long current_time) {
       button_state = reading;
     
       if (button_state == LOW) {
-        // Serial.println("Pressed!");
-        if (LED_strip_state == LOW) {
-          // Wrong press, turn on buzzer
-          // Serial.println("Wrong press!");
-          //digitalWrite(buzzer_pin, HIGH);
-          buzzer_state = HIGH;
-          //buzzer_start_time = current_time;
+        click_counter++;
+
+        if (response_window_active && !point_answered && point_tracker >= 0) {
+          click_tracker[point_tracker] = '1';
+          point_answered = true;
+          Serial.println("PRESS_CORRECT");
         } 
         else {
-          
-          // Add click to click tracker
-          click_tracker[point_tracker] = '1';
+          buzzer_state = HIGH;
+          Serial.println("PRESS_WRONG");
         }
-
-        click_counter++;
       } 
     }
   }
