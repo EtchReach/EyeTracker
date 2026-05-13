@@ -60,6 +60,21 @@ git push --tags
 
 ## Debugging
 
+### Google Sheets
+
+For local development, configure Google Sheets export with a `.env` file in the project root. The app still supports the existing per-user `config.json`, but `.env` now overrides the `google_sheets` settings.
+
+Use `.env.example` as the template:
+
+```env
+EYETRACKER_GOOGLE_SHEETS_ENABLED=true
+EYETRACKER_GOOGLE_SHEETS_CREDENTIALS_PATH=./service-account.json
+EYETRACKER_GOOGLE_SHEETS_SPREADSHEET_ID=your_google_sheet_id
+EYETRACKER_GOOGLE_SHEETS_WORKSHEET_NAME=Sheet1
+```
+
+Keep the Google service account JSON file out of git and point `EYETRACKER_GOOGLE_SHEETS_CREDENTIALS_PATH` at it.
+
 ### Performance Issues
 
 #### Problem: Sluggish Camera Feed / Low FPS

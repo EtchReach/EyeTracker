@@ -51,6 +51,9 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 # Install dependencies
 pip install -r requirements.txt
 
+# Optional: configure Google Sheets result export
+# Copy .env.example to .env and fill in the Google Sheets values
+
 # Run the application
 python main.py
 

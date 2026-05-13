@@ -17,7 +17,7 @@ from app.integrations.google_sheets import append_row, GoogleSheetsError
 
 
 class SaveResultsDialog(QDialog):
-    """Prompt for patient and admin names before saving."""
+    """Prompt for participant ID and admin ID before saving."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -34,13 +34,13 @@ class SaveResultsDialog(QDialog):
         layout = QVBoxLayout(self)
         form = QFormLayout()
 
-        self.patient_input = QLineEdit()
-        self.patient_input.setPlaceholderText("Patient name")
+        self.participant_id_input = QLineEdit()
+        self.participant_id_input.setPlaceholderText("Participant ID")
         self.admin_input = QLineEdit()
-        self.admin_input.setPlaceholderText("Admin name")
+        self.admin_input.setPlaceholderText("Admin ID")
 
-        form.addRow("Patient name:", self.patient_input)
-        form.addRow("Admin name:", self.admin_input)
+        form.addRow("Participant ID:", self.participant_id_input)
+        form.addRow("Admin ID:", self.admin_input)
         layout.addLayout(form)
 
         buttons = QDialogButtonBox(
@@ -53,13 +53,13 @@ class SaveResultsDialog(QDialog):
         self.setFixedWidth(360)
 
     def _on_save(self):
-        if not self.patient_input.text().strip() or not self.admin_input.text().strip():
-            QMessageBox.warning(self, "Missing Info", "Please enter both patient and admin names.")
+        if not self.participant_id_input.text().strip() or not self.admin_input.text().strip():
+            QMessageBox.warning(self, "Missing Info", "Please enter both participant ID and admin ID.")
             return
         self.accept()
 
     def get_values(self):
-        return self.patient_input.text().strip(), self.admin_input.text().strip()
+        return self.participant_id_input.text().strip(), self.admin_input.text().strip()
 
 
 class ResultsView(QWidget):
@@ -274,7 +274,7 @@ class ResultsView(QWidget):
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
 
-        patient_name, admin_name = dialog.get_values()
+        participant_id, admin_id = dialog.get_values()
         metrics = self._calculate_metrics(self.results)
 
         record_id = str(uuid4())
@@ -283,8 +283,8 @@ class ResultsView(QWidget):
         header = [
             "UUID",
             "DATE_TIME",
-            "PATIENT_NAME",
-            "ADMIN_NAME",
+            "PARTICIPANT_ID",
+            "ADMIN_ID",
             "TOTAL_POINTS_SHOWN",
             "POINTS_DETECTED",
             "POINTS_MISSED",
@@ -298,8 +298,8 @@ class ResultsView(QWidget):
         row = [
             record_id,
             timestamp,
-            patient_name,
-            admin_name,
+            participant_id,
+            admin_id,
             metrics["total_points"],
             metrics["points_clicked"],
             metrics["points_missed"],
@@ -316,7 +316,7 @@ class ResultsView(QWidget):
             QMessageBox.warning(
                 self,
                 "Google Sheets Disabled",
-                "Google Sheets is disabled in config. Enable it and set credentials_path and spreadsheet_id.",
+                "Google Sheets is disabled. Configure it in .env or config.json, then set the credentials path and spreadsheet ID.",
             )
             return
 
