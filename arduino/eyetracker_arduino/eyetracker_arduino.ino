@@ -26,7 +26,7 @@ const char RESP_ACK = 'O';             // Command acknowledged
 
 // Timing constants
 const int point_duration = 5000; // wait time before shifting to next point
-const unsigned long START_DELAY_MS = 2000;
+const unsigned long START_DELAY_MS = 0;
 const unsigned long RESPONSE_WINDOW_MS = 2000;
 const int PRE_FIRE_DELAY = 500;    // 0.5 second delay before firing
 //const int buzzer_duration = 1000; // Buzzer duration in milliseconds
